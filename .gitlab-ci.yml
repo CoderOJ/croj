@@ -1,6 +1,8 @@
 test:
   image: jiegec/rust:1.79-bookworm-tuna
   script:
+    - apt install docker.io
+    - docker build -t oj-judger judger
     - cargo build
     - cargo test --test basic_requirements -- --test-threads=1 || touch /tmp/ci.fail
     - cargo test --test advanced_requirements -- --test-threads=1 || true
