@@ -1,0 +1,8 @@
+# prefer tabstop = 2
+hard_tabs = true
+
+imports_granularity = "One"
+struct_lit_single_line = false
+
+enum_discrim_align_threshold = 20
+struct_field_align_threshold = 20
