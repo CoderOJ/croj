@@ -102,7 +102,7 @@ fn run_case<F: FnMut(CaseResult)>(
 		}
 	});
 
-	let child_start = std::time::SystemTime::now();
+	let child_start = std::time::Instant::now();
 	let ResUse {
 		status,
 		rusage: ResourceUsage {
@@ -111,8 +111,7 @@ fn run_case<F: FnMut(CaseResult)>(
 			maxrss: memory,
 		},
 	} = child.wait4()?;
-	let child_end = std::time::SystemTime::now();
-	let time = child_end.duration_since(child_start)?.as_micros() as u64;
+	let time = child_start.elapsed().as_micros() as u64;
 
 	// disable TLE killer
 	let _ = killer_sender.send(());

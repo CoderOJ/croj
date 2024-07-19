@@ -77,6 +77,44 @@ pub mod config {
 		pub time_limit:   u64,
 		pub memory_limit: u64,
 	}
+
+	#[derive(Serialize, Deserialize, Debug)]
+	pub struct Server {
+		pub bind_address: String,
+		pub bind_port:    u16,
+	}
+
+	#[derive(Serialize, Deserialize, Debug)]
+	pub enum ProblemType {
+		#[serde(rename = "standard")]
+		Standard,
+		#[serde(rename = "strict")]
+		Strict,
+		#[serde(rename = "spj")]
+		Checker,
+	}
+
+	#[derive(Serialize, Deserialize, Debug)]
+	pub struct ProblemMisc {
+		pub special_judge: Vec<String>,
+	}
+
+	#[derive(Serialize, Deserialize, Debug)]
+	pub struct Problem {
+		pub id:    u64,
+		pub name:  String,
+		#[serde(rename = "type")]
+		pub type_: ProblemType,
+		pub misc:  ProblemMisc,
+		pub cases: Vec<Case>,
+	}
+
+	#[derive(Serialize, Deserialize, Debug)]
+	pub struct Config {
+		pub server:    Server,
+		pub problems:  Vec<Problem>,
+		pub languages: Vec<Language>,
+	}
 }
 
 pub mod judger {
