@@ -18,8 +18,8 @@ struct Args {
 	memory: u64,
 
 	/// enable sandbox
-	#[arg(short, long, default_value_t = false)]
-	sandbox: bool,
+	#[arg(short, long)]
+	sandbox: Option<bool>,
 }
 
 fn set_seccomp() {
@@ -97,7 +97,7 @@ fn main() {
 		libc::setgid(2000);
 	}
 	set_rlimit(&args);
-	if args.sandbox {
+	if args.sandbox.unwrap_or(false) {
 		set_seccomp();
 	}
 

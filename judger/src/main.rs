@@ -61,6 +61,7 @@ fn compile<F: FnMut(Update)>(fs: &Fs, code: &Code, mut send: F) -> Result<()> {
 
 fn run_case<F: FnMut(CaseResult)>(
 	fs: &Fs,
+	sandbox: bool,
 	case: &Case,
 	checker: &workaround::Command,
 	mut send_case: F,
@@ -71,12 +72,12 @@ fn run_case<F: FnMut(CaseResult)>(
 	let output_file = &fs.output;
 	let answer_file = &fs.answer.at(&case.answer_file);
 
-	let sandbox = format!(
+	let runner = format!(
 		"{}/sandbox",
 		std::env::var("JUDGER_BIN_DIR").unwrap_or("/app/target/release".to_string())
 	);
 
-	let mut child = Command::new(sandbox)
+	let mut child = Command::new(runner)
 		.args(vec![
 			"-r",
 			&format!("./{}", fs.target.raw()),
@@ -84,6 +85,8 @@ fn run_case<F: FnMut(CaseResult)>(
 			&format!("{}", case.time_limit),
 			"-m",
 			&format!("{}", case.memory_limit),
+			"-s",
+			&format!("{}", sandbox),
 		])
 		.stdin(Stdio::from(input_file.getter()?))
 		.stdout(Stdio::from(output_file.setter()?))
@@ -203,6 +206,7 @@ fn main() {
 
 			let Request {
 				cases,
+				sandbox,
 				code,
 				checker,
 			} = || -> Result<Request> {
@@ -222,7 +226,7 @@ fn main() {
 			let mut score: f64 = 0.0;
 			let mut general_result: JudgeResult = JudgeResult::Accepted;
 			for (id, case) in cases.iter().enumerate() {
-				run_case(&fs, case, &checker, |data: CaseResult| {
+				run_case(&fs, sandbox, case, &checker, |data: CaseResult| {
 					if let CaseResult::Finished(info) = &data {
 						score += info.result.score_coef() * case.score;
 						general_result = general_result.or(info.result);

@@ -127,6 +127,7 @@ pub mod judger {
 	#[derive(Serialize, Deserialize, Debug)]
 	pub struct Request {
 		pub code:    config::Code,
+		pub sandbox: bool,
 		pub cases:   Vec<config::Case>,
 		pub checker: workaround::RemoteCommand,
 	}
