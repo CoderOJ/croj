@@ -1,3 +1,246 @@
+// judger service
+// this code is written in principle that each statement is either:
+// 1. let
+// 2. cps style, (pure) side effect, which is either:
+//   + run command: compile/main/diff
+//   + send update
+
+use {
+	anyhow::{anyhow, Error, Result},
+	cond::cond,
+	judger::{config::*, fs::Fs, judger::*, workaround},
+	serde_json::{from_str, to_string},
+	std::{
+		io::Read,
+		os::unix::process::ExitStatusExt,
+		process::{Command, Stdio},
+		time::Duration,
+	},
+	wait4::{ResUse, ResourceUsage, Wait4},
+	wait_timeout::ChildExt,
+};
+
+fn try_catch<F: Fn() -> Result<()>, Reject: FnOnce(Error)>(f: F, reject: Reject) {
+	match f() {
+		Ok(_) => unreachable!(),
+		Err(e) => reject(e),
+	}
+}
+
+fn compile<F: FnMut(Update)>(fs: &Fs, code: &Code, mut send: F) -> Result<()> {
+	let mut child = Command::new(&code.language.command[0])
+		.args(
+			code.language
+				.command
+				.iter()
+				.skip(1)
+				.map(|entry| match entry.as_str() {
+					"%OUTPUT%" => fs.target.raw(),
+					"%INPUT%" => fs.source.raw(),
+					_ => entry,
+				}),
+		)
+		.spawn()?;
+	let status = child.wait_timeout(Duration::from_secs(10))?;
+
+	match status {
+		// exit within time limit and compile success
+		Some(code) if code.success() => {
+			send(Update::General(JudgeResult::CompilationSuccess));
+		}
+		// + None: exceed time limit
+		// + !code.success(): compile error
+		_ => {
+			// kill compile process with SIGKILL if needed
+			let _ = child.kill();
+			send(Update::Finish(JudgeResult::CompilationError, 0.0));
+		}
+	}
+	return Ok(());
+}
+
+fn run_case<F: FnMut(CaseResult)>(
+	fs: &Fs,
+	case: &Case,
+	checker: &workaround::Command,
+	mut send_case: F,
+) -> Result<()> {
+	send_case(CaseResult::Running);
+
+	let input_file = &fs.input.at(&case.input_file);
+	let output_file = &fs.output;
+	let answer_file = &fs.answer.at(&case.answer_file);
+
+	let sandbox = format!(
+		"{}/sandbox",
+		std::env::var("JUDGER_BIN_DIR").unwrap_or("/app/target/release".to_string())
+	);
+
+	let mut child = Command::new(sandbox)
+		.args(vec![
+			"-r",
+			&format!("./{}", fs.target.raw()),
+			"-t",
+			&format!("{}", case.time_limit),
+			"-m",
+			&format!("{}", case.memory_limit),
+		])
+		.stdin(Stdio::from(input_file.getter()?))
+		.stdout(Stdio::from(output_file.setter()?))
+		.stderr(Stdio::null())
+		.spawn()?;
+
+	// user-time tle killer
+	let (killer_sender, killer_recv) = std::sync::mpsc::channel::<()>();
+	let kill_timeout = Duration::from_micros(case.time_limit + 2_000_000);
+	let child_pid = child.id();
+	std::thread::spawn(move || {
+		std::thread::sleep(kill_timeout);
+		// if haven't receive "finish" signal
+		if killer_recv.try_recv().is_err() {
+			unsafe { libc::kill(child_pid as i32, libc::SIGKILL) };
+		}
+	});
+
+	let child_start = std::time::SystemTime::now();
+	let ResUse {
+		status,
+		rusage: ResourceUsage {
+			utime: _,
+			stime: _,
+			maxrss: memory,
+		},
+	} = child.wait4()?;
+	let child_end = std::time::SystemTime::now();
+	let time = child_end.duration_since(child_start)?.as_micros() as u64;
+
+	// disable TLE killer
+	let _ = killer_sender.send(());
+
+	send_case(CaseResult::Finished(match status.success() {
+		// MLE, TLE, RE
+		false => CaseResultInfo {
+			result: cond! {
+				memory > case.memory_limit => JudgeResult::MemoryLimitExceeded,
+				time > case.time_limit => JudgeResult::TimeLimitExceeded,
+				_ => JudgeResult::RuntimeError,
+			},
+			time,
+			memory,
+			info: match status.code() {
+				None => match status.signal().unwrap() {
+					31 => "Dangerous Syscall".to_string(),
+					_ => format!("killed by signal {}", status.signal().unwrap()),
+				},
+				Some(code) => format!("exit with code {}", code),
+			},
+		},
+		// AC, WA, SPJError
+		true => {
+			println!("{:?}", checker);
+			let mut checker_command_it = checker.into_iter();
+			let mut checker_process =
+				Command::new(checker_command_it.next().ok_or(anyhow!("empty spj"))?)
+					.args(checker_command_it.map(|entry| match entry.as_str() {
+						"%INPUT%" => input_file.raw(),
+						"%OUTPUT%" => fs.output.raw(),
+						"%ANSWER%" => answer_file.raw(),
+						_ => entry,
+					}))
+					.stdin(Stdio::null())
+					.stdout(Stdio::from(fs.checker.at("output").setter()?))
+					.stderr(Stdio::null())
+					.spawn()?;
+			match checker_process.wait_timeout(Duration::from_secs(1))? {
+				Some(code) if code.success() => {
+					let checker_output = fs.checker.at("output").get()?;
+					let mut iter = checker_output.split("\n");
+					let result_type = iter.next();
+					let result_info = iter.next().unwrap_or("").to_string();
+					match result_type {
+						Some("Accepted") => CaseResultInfo {
+							result: JudgeResult::Accepted,
+							time,
+							memory,
+							info: result_info,
+						},
+						_ => CaseResultInfo {
+							result: JudgeResult::WrongAnswer,
+							time,
+							memory,
+							info: result_info,
+						},
+					}
+				}
+				_ => CaseResultInfo {
+					result: JudgeResult::SPJError,
+					time,
+					memory,
+					info: "".to_string(),
+				},
+			}
+		}
+	}));
+	return Ok(());
+}
+
+// send takes onwership as a continuation
+fn send(data: Update) {
+	println!("{}", to_string(&data).unwrap());
+
+	// (only) exit continuation
+	if let Update::Finish(_, _) = &data {
+		std::process::exit(0);
+	}
+}
+
 fn main() {
-	println!("Hello, world!");
+	// this try_catch env replace the main
+	// reject: replace exitCode and stderr
+	try_catch(
+		|| {
+			// work dir mapped by docker
+			let fs = Fs::bind(&std::env::var("JUDGER_WORK_DIR").unwrap_or("/work".to_string()))?;
+
+			let Request {
+				cases,
+				code,
+				checker,
+			} = || -> Result<Request> {
+				let mut buf: String = String::new();
+				std::io::stdin().read_to_string(&mut buf)?;
+				return Ok(from_str(&buf)?);
+			}()?;
+
+			// unpack checker
+			let checker = checker.unpack(fs.checker.iter().map(|f| f.raw().clone()))?;
+
+			// save & compile source
+			fs.source.set(&code.source)?;
+			compile(&fs, &code, send)?;
+
+			// run cases
+			let mut score: f64 = 0.0;
+			let mut general_result: JudgeResult = JudgeResult::Accepted;
+			for (id, case) in cases.iter().enumerate() {
+				run_case(&fs, case, &checker, |data: CaseResult| {
+					if let CaseResult::Finished(info) = &data {
+						score += info.result.score_coef() * case.score;
+						general_result = general_result.or(info.result);
+					}
+					send(Update::Case(UpdateCase {
+						id: id as u64,
+						data,
+					}))
+				})?;
+			}
+
+			send(Update::Finish(general_result, score));
+
+			return Err(anyhow!("judger reach end without sending Finish"));
+		},
+		|err| {
+			send(Update::Error(err.to_string()));
+		},
+	);
 }

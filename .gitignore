@@ -4,3 +4,4 @@ target
 *.http
 tmp/
 /data
+/judger/work
