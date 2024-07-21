@@ -1,3 +1,5 @@
+pub type Timestamp = chrono::DateTime<chrono::Utc>;
+
 pub mod workaround {
 	use {
 		anyhow::{anyhow, Result},
@@ -54,9 +56,11 @@ pub mod workaround {
 }
 
 pub mod config {
+	use std::collections::HashMap;
+
 	use serde::{Deserialize, Serialize};
 
-	#[derive(Serialize, Deserialize, Debug)]
+	#[derive(Serialize, Deserialize, Debug, Clone)]
 	pub struct Language {
 		pub name:      String,
 		pub file_name: String,
@@ -69,7 +73,7 @@ pub mod config {
 		pub source:   String,
 	}
 
-	#[derive(Serialize, Deserialize, Debug)]
+	#[derive(Serialize, Deserialize, Debug, Clone)]
 	pub struct Case {
 		pub score:        f64,
 		pub input_file:   String,
@@ -96,7 +100,7 @@ pub mod config {
 
 	#[derive(Serialize, Deserialize, Debug)]
 	pub struct ProblemMisc {
-		pub special_judge: Vec<String>,
+		pub special_judge: Option<Vec<String>>,
 	}
 
 	#[derive(Serialize, Deserialize, Debug)]
@@ -110,10 +114,30 @@ pub mod config {
 	}
 
 	#[derive(Serialize, Deserialize, Debug)]
-	pub struct Config {
+	pub struct RawConfig {
 		pub server:    Server,
 		pub problems:  Vec<Problem>,
 		pub languages: Vec<Language>,
+	}
+
+	pub struct Config {
+		pub server:    Server,
+		pub problems:  HashMap<u64, Problem>,
+		pub languages: HashMap<String, Language>,
+	}
+
+	impl Config {
+		pub fn from(raw_config: RawConfig) -> Config {
+			Config {
+				server:    raw_config.server,
+				problems:  raw_config.problems.into_iter().map(|p| (p.id, p)).collect(),
+				languages: raw_config
+					.languages
+					.into_iter()
+					.map(|p| (p.name.clone(), p))
+					.collect(),
+			}
+		}
 	}
 }
 
@@ -132,8 +156,9 @@ pub mod judger {
 		pub checker: workaround::RemoteCommand,
 	}
 
+	// use french word resultat to differ from rust Result
 	#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-	pub enum JudgeResult {
+	pub enum Resultat {
 		Waiting,
 		Running,
 		Skipped,
@@ -147,7 +172,7 @@ pub mod judger {
 		SystemError,
 		SPJError,
 	}
-	impl JudgeResult {
+	impl Resultat {
 		pub fn score_coef(self) -> f64 {
 			match self {
 				Self::Accepted => 1.0,
@@ -164,7 +189,7 @@ pub mod judger {
 
 	#[derive(Serialize, Deserialize, Debug)]
 	pub struct CaseResultInfo {
-		pub result: JudgeResult,
+		pub result: Resultat,
 		pub time:   u64,
 		pub memory: u64,
 		pub info:   String,
@@ -189,9 +214,9 @@ pub mod judger {
 	pub enum Update {
 		Case(UpdateCase),
 		/// General result update (e.g. compile)
-		General(JudgeResult),
+		General(Resultat),
 		/// Finish(result, score)
-		Finish(JudgeResult, f64),
+		Finish(Resultat, f64),
 		/// Internal Error
 		Error(String),
 	}

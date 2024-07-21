@@ -46,14 +46,14 @@ fn compile<F: FnMut(Update)>(fs: &Fs, code: &Code, mut send: F) -> Result<()> {
 	match status {
 		// exit within time limit and compile success
 		Some(code) if code.success() => {
-			send(Update::General(JudgeResult::CompilationSuccess));
+			send(Update::General(Resultat::CompilationSuccess));
 		}
 		// + None: exceed time limit
 		// + !code.success(): compile error
 		_ => {
 			// kill compile process with SIGKILL if needed
 			let _ = child.kill();
-			send(Update::Finish(JudgeResult::CompilationError, 0.0));
+			send(Update::Finish(Resultat::CompilationError, 0.0));
 		}
 	}
 	return Ok(());
@@ -123,9 +123,9 @@ fn run_case<F: FnMut(CaseResult)>(
 		// MLE, TLE, RE
 		false => CaseResultInfo {
 			result: cond! {
-				memory > case.memory_limit => JudgeResult::MemoryLimitExceeded,
-				time > case.time_limit => JudgeResult::TimeLimitExceeded,
-				_ => JudgeResult::RuntimeError,
+				memory > case.memory_limit => Resultat::MemoryLimitExceeded,
+				time > case.time_limit => Resultat::TimeLimitExceeded,
+				_ => Resultat::RuntimeError,
 			},
 			time,
 			memory,
@@ -161,13 +161,13 @@ fn run_case<F: FnMut(CaseResult)>(
 					let result_info = iter.next().unwrap_or("").to_string();
 					match result_type {
 						Some("Accepted") => CaseResultInfo {
-							result: JudgeResult::Accepted,
+							result: Resultat::Accepted,
 							time,
 							memory,
 							info: result_info,
 						},
 						_ => CaseResultInfo {
-							result: JudgeResult::WrongAnswer,
+							result: Resultat::WrongAnswer,
 							time,
 							memory,
 							info: result_info,
@@ -175,7 +175,7 @@ fn run_case<F: FnMut(CaseResult)>(
 					}
 				}
 				_ => CaseResultInfo {
-					result: JudgeResult::SPJError,
+					result: Resultat::SPJError,
 					time,
 					memory,
 					info: "".to_string(),
@@ -224,7 +224,7 @@ fn main() {
 
 			// run cases
 			let mut score: f64 = 0.0;
-			let mut general_result: JudgeResult = JudgeResult::Accepted;
+			let mut general_result: Resultat = Resultat::Accepted;
 			for (id, case) in cases.iter().enumerate() {
 				run_case(&fs, sandbox, case, &checker, |data: CaseResult| {
 					if let CaseResult::Finished(info) = &data {
