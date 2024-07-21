@@ -16,9 +16,9 @@ fn main() {
 						.map(|s| s.to_string())
 						.collect(),
 				},
-				source:   std::fs::read_to_string("tests/sleep.rs").unwrap(),
+				source:   std::fs::read_to_string("tests/echo.rs").unwrap(),
 			},
-			sandbox: true,
+			sandbox: false,
 			cases:   (0..2)
 				.map(|id| Case {
 					score:        50.0,

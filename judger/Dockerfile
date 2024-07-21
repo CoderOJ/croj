@@ -8,8 +8,9 @@ Run apk add libseccomp-dev # seccomp_sys
 RUN apk add python3
 RUN adduser -D -H -s /sbin/nologin -u 2000 test
 
-ADD ./ /app/
+ADD ./src /app/src
+ADD ./Cargo.toml /app/Cargo.toml
 WORKDIR /app/
 RUN cargo build --release
 
-ENTRYPOINT ["cargo", "run"]
+ENTRYPOINT ["/app/target/release/judger"]
