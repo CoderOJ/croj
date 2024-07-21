@@ -13,11 +13,10 @@ use {
 	std::{
 		io::Read,
 		os::unix::process::ExitStatusExt,
-		process::{Command, Stdio},
-		time::Duration,
+		process::{Child, Command, ExitStatus, Stdio},
+		time::{Duration, Instant},
 	},
 	wait4::{ResUse, ResourceUsage, Wait4},
-	wait_timeout::ChildExt,
 };
 
 fn try_catch<F: Fn() -> Result<()>, Reject: FnOnce(Error)>(f: F, reject: Reject) {
@@ -27,8 +26,55 @@ fn try_catch<F: Fn() -> Result<()>, Reject: FnOnce(Error)>(f: F, reject: Reject)
 	}
 }
 
+struct Usage {
+	pub status: ExitStatus,
+	pub time:   std::time::Duration,
+	pub memory: u64,
+}
+
+trait WaitUsageTimeout {
+	fn wait_usage_timeout(&mut self, timeout: std::time::Duration) -> Result<Usage>;
+}
+
+impl WaitUsageTimeout for Child {
+	fn wait_usage_timeout(&mut self, timeout: std::time::Duration) -> Result<Usage> {
+		let time_start = Instant::now();
+
+		// user-time tle killer, in case use sleep for long
+		// unix pid might be reused by future subprocess, causing killing wrong process
+		// so a notifier is needed
+		let (killer_send, killer_recv) = std::sync::mpsc::channel::<()>();
+		let pid = self.id() as i32;
+		std::thread::spawn(move || {
+			std::thread::sleep(timeout);
+			// if haven't receive "finish" signal
+			if killer_recv.try_recv().is_err() {
+				unsafe { libc::kill(pid, libc::SIGKILL) };
+			}
+		});
+
+		let ResUse {
+			status,
+			rusage: ResourceUsage {
+				utime: _,
+				stime: _,
+				maxrss: memory,
+			},
+		} = self.wait4()?;
+		let time = time_start.elapsed();
+		// disable killer
+		let _ = killer_send.send(());
+
+		return Ok(Usage {
+			status,
+			time,
+			memory,
+		});
+	}
+}
+
 fn compile<F: FnMut(Update)>(fs: &Fs, code: &Code, mut send: F) -> Result<()> {
-  send(Update::Compile(Resultat::Running));
+	send(Update::Compile(CaseResult::Running));
 	let mut child = Command::new(&code.language.command[0])
 		.args(
 			code.language
@@ -42,22 +88,32 @@ fn compile<F: FnMut(Update)>(fs: &Fs, code: &Code, mut send: F) -> Result<()> {
 				}),
 		)
 		.spawn()?;
-	let status = child.wait_timeout(Duration::from_secs(10))?;
+	let Usage {
+		status,
+		time,
+		memory,
+	} = child.wait_usage_timeout(Duration::from_secs(10))?;
 
-	match status {
-		// exit within time limit and compile success
-		Some(code) if code.success() => {
-			send(Update::Compile(Resultat::CompilationSuccess));
+	match status.success() {
+		true => {
+			send(Update::Compile(CaseResult::Finished(CaseResultInfo {
+				result: Resultat::CompilationSuccess,
+				time: time.as_millis() as u64,
+				memory,
+				info: String::new(),
+			})));
 		}
-		// + None: exceed time limit
-		// + !code.success(): compile error
-		_ => {
-			// kill compile process with SIGKILL if needed
-			let _ = child.kill();
-			send(Update::Compile(Resultat::CompilationError));
+		false => {
+			send(Update::Compile(CaseResult::Finished(CaseResultInfo {
+				result: Resultat::CompilationError,
+				time: time.as_millis() as u64,
+				memory,
+				info: String::new(),
+			})));
 			send(Update::Finish(Resultat::CompilationError, 0.0));
 		}
 	}
+
 	return Ok(());
 }
 
@@ -95,31 +151,13 @@ fn run_case<F: FnMut(CaseResult)>(
 		.stderr(Stdio::null())
 		.spawn()?;
 
-	// user-time tle killer
-	let (killer_sender, killer_recv) = std::sync::mpsc::channel::<()>();
-	let kill_timeout = Duration::from_micros(case.time_limit + 2_000_000);
-	let child_pid = child.id();
-	std::thread::spawn(move || {
-		std::thread::sleep(kill_timeout);
-		// if haven't receive "finish" signal
-		if killer_recv.try_recv().is_err() {
-			unsafe { libc::kill(child_pid as i32, libc::SIGKILL) };
-		}
-	});
-
-	let child_start = std::time::Instant::now();
-	let ResUse {
+	let timeout = Duration::from_micros(case.time_limit + 1_000_000);
+	let Usage {
 		status,
-		rusage: ResourceUsage {
-			utime: _,
-			stime: _,
-			maxrss: memory,
-		},
-	} = child.wait4()?;
-	let time = child_start.elapsed().as_micros() as u64;
-
-	// disable TLE killer
-	let _ = killer_sender.send(());
+		time,
+		memory,
+	} = child.wait_usage_timeout(timeout)?;
+	let time = time.as_micros() as u64;
 
 	send_case(CaseResult::Finished(match status.success() {
 		// MLE, TLE, RE
@@ -154,8 +192,12 @@ fn run_case<F: FnMut(CaseResult)>(
 					.stdout(Stdio::from(fs.checker_output.setter()?))
 					.stderr(Stdio::null())
 					.spawn()?;
-			match checker_process.wait_timeout(Duration::from_secs(1))? {
-				Some(code) if code.success() => {
+			match checker_process
+				.wait_usage_timeout(Duration::from_secs(1))?
+				.status
+				.success()
+			{
+				true => {
 					let checker_output = fs.checker_output.get()?;
 					let mut iter = checker_output.split("\n");
 					let result_type = iter.next();
@@ -175,7 +217,7 @@ fn run_case<F: FnMut(CaseResult)>(
 						},
 					}
 				}
-				_ => CaseResultInfo {
+				false => CaseResultInfo {
 					result: Resultat::SPJError,
 					time,
 					memory,
@@ -225,17 +267,14 @@ fn main() {
 
 			// run cases
 			let mut score: f64 = 0.0;
-			let mut general_result: Resultat = Resultat::Accepted;
+			let mut general_result = Resultat::Accepted;
 			for (id, case) in cases.iter().enumerate() {
 				run_case(&fs, sandbox, case, &checker, |data: CaseResult| {
 					if let CaseResult::Finished(info) = &data {
 						score += info.result.score_coef() * case.score;
 						general_result = general_result.or(info.result);
 					}
-					send(Update::Case(UpdateCase {
-						id: id as u64,
-						data,
-					}))
+					send(Update::Case(id as u64, data));
 				})?;
 			}
 

@@ -268,18 +268,12 @@ pub mod judger {
 		Finished(CaseResultInfo),
 	}
 
-	#[derive(Serialize, Deserialize, Debug)]
-	pub struct UpdateCase {
-		pub id:   u64,
-		pub data: CaseResult,
-	}
-
 	/// Judge update: once per case
 	#[derive(Serialize, Deserialize, Debug)]
 	pub enum Update {
-		Case(UpdateCase),
+		Case(u64, CaseResult),
 		/// General result update (e.g. compile)
-		Compile(Resultat),
+		Compile(CaseResult),
 		/// Finish(result, score)
 		Finish(Resultat, f64),
 		/// Internal Error
