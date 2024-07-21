@@ -139,7 +139,6 @@ fn run_case<F: FnMut(CaseResult)>(
 		},
 		// AC, WA, SPJError
 		true => {
-			println!("{:?}", checker);
 			let mut checker_command_it = checker.into_iter();
 			let mut checker_process =
 				Command::new(checker_command_it.next().ok_or(anyhow!("empty spj"))?)
