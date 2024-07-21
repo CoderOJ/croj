@@ -279,7 +279,7 @@ pub mod judger {
 	pub enum Update {
 		Case(UpdateCase),
 		/// General result update (e.g. compile)
-		General(Resultat),
+		Compile(Resultat),
 		/// Finish(result, score)
 		Finish(Resultat, f64),
 		/// Internal Error

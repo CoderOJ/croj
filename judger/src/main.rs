@@ -28,6 +28,7 @@ fn try_catch<F: Fn() -> Result<()>, Reject: FnOnce(Error)>(f: F, reject: Reject)
 }
 
 fn compile<F: FnMut(Update)>(fs: &Fs, code: &Code, mut send: F) -> Result<()> {
+  send(Update::Compile(Resultat::Running));
 	let mut child = Command::new(&code.language.command[0])
 		.args(
 			code.language
@@ -46,13 +47,14 @@ fn compile<F: FnMut(Update)>(fs: &Fs, code: &Code, mut send: F) -> Result<()> {
 	match status {
 		// exit within time limit and compile success
 		Some(code) if code.success() => {
-			send(Update::General(Resultat::CompilationSuccess));
+			send(Update::Compile(Resultat::CompilationSuccess));
 		}
 		// + None: exceed time limit
 		// + !code.success(): compile error
 		_ => {
 			// kill compile process with SIGKILL if needed
 			let _ = child.kill();
+			send(Update::Compile(Resultat::CompilationError));
 			send(Update::Finish(Resultat::CompilationError, 0.0));
 		}
 	}
