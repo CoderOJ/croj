@@ -56,9 +56,11 @@ pub mod workaround {
 }
 
 pub mod config {
-	use std::collections::HashMap;
-
-	use serde::{Deserialize, Serialize};
+	use {
+		crate::workaround,
+		serde::{Deserialize, Serialize},
+		std::{collections::HashMap, fs, io::Result, sync::Arc},
+	};
 
 	#[derive(Serialize, Deserialize, Debug, Clone)]
 	pub struct Language {
@@ -67,14 +69,8 @@ pub mod config {
 		pub command:   Vec<String>,
 	}
 
-	#[derive(Serialize, Deserialize, Debug)]
-	pub struct Code {
-		pub language: Language,
-		pub source:   String,
-	}
-
 	#[derive(Serialize, Deserialize, Debug, Clone)]
-	pub struct Case {
+	pub struct RawCase {
 		pub score:        f64,
 		pub input_file:   String,
 		pub answer_file:  String,
@@ -89,7 +85,7 @@ pub mod config {
 	}
 
 	#[derive(Serialize, Deserialize, Debug)]
-	pub enum ProblemType {
+	pub enum RawProblemType {
 		#[serde(rename = "standard")]
 		Standard,
 		#[serde(rename = "strict")]
@@ -99,44 +95,107 @@ pub mod config {
 	}
 
 	#[derive(Serialize, Deserialize, Debug)]
-	pub struct ProblemMisc {
+	pub struct RawProblemMisc {
 		pub special_judge: Option<Vec<String>>,
 	}
 
 	#[derive(Serialize, Deserialize, Debug)]
-	pub struct Problem {
-		pub id:    u64,
-		pub name:  String,
+	pub struct RawProblem {
+		pub id:      u64,
+		pub name:    String,
 		#[serde(rename = "type")]
-		pub type_: ProblemType,
-		pub misc:  ProblemMisc,
-		pub cases: Vec<Case>,
+		pub type_:   RawProblemType,
+		pub misc:    RawProblemMisc,
+		pub cases:   Vec<RawCase>,
+		pub sandbox: Option<bool>,
 	}
 
 	#[derive(Serialize, Deserialize, Debug)]
 	pub struct RawConfig {
 		pub server:    Server,
-		pub problems:  Vec<Problem>,
+		pub problems:  Vec<RawProblem>,
 		pub languages: Vec<Language>,
+	}
+
+	#[derive(Serialize, Deserialize, Debug)]
+	pub struct Case {
+		pub uid:          u64,
+		pub score:        f64,
+		pub time_limit:   u64,
+		pub memory_limit: u64,
+	}
+
+	pub struct Problem {
+		pub name:     String,
+		pub checker:  workaround::RemoteCommand,
+		pub data_dir: String,
+		pub cases:    Vec<Case>,
+		pub sandbox:  bool,
+	}
+	impl Problem {
+		fn from(data_dir: &std::path::Path, raw: RawProblem) -> Result<Self> {
+			Ok(Self {
+				name:     raw.name,
+				checker:  workaround::RemoteCommand::pack(match raw.type_ {
+					RawProblemType::Standard => {
+						["python3", "./checkers/standard.py", "%OUTPUT%", "%ANSWER%"]
+							.map(String::from)
+							.to_vec()
+					}
+					RawProblemType::Strict => {
+						["python3", "./checkers/strict.py", "%OUTPUT%", "%ANSWER%"]
+							.map(String::from)
+							.to_vec()
+					}
+					RawProblemType::Checker => raw.misc.special_judge.as_ref().unwrap().clone(),
+				}),
+				data_dir: data_dir.to_str().unwrap().to_string(),
+				cases:    raw
+					.cases
+					.into_iter()
+					.enumerate()
+					.map(|(id, raw)| -> Result<Case> {
+						// this part should use crate::Fs feature instead of string concat
+						std::fs::copy(raw.input_file, data_dir.join(format!("in{}", id)))?;
+						std::fs::copy(raw.answer_file, data_dir.join(format!("ans{}", id)))?;
+						return Ok(Case {
+							uid:          id as u64,
+							score:        raw.score,
+							time_limit:   raw.time_limit,
+							memory_limit: raw.memory_limit,
+						});
+					})
+					.collect::<Result<Vec<Case>>>()?,
+				sandbox:  raw.sandbox.unwrap_or(false),
+			})
+		}
 	}
 
 	pub struct Config {
 		pub server:    Server,
-		pub problems:  HashMap<u64, Problem>,
-		pub languages: HashMap<String, Language>,
+		pub problems:  HashMap<u64, Arc<Problem>>,
+		pub languages: HashMap<String, Arc<Language>>,
 	}
 
 	impl Config {
-		pub fn from(raw_config: RawConfig) -> Config {
-			Config {
+		pub fn from(data_dir: &std::path::Path, raw_config: RawConfig) -> Result<Config> {
+			Ok(Config {
 				server:    raw_config.server,
-				problems:  raw_config.problems.into_iter().map(|p| (p.id, p)).collect(),
+				problems:  raw_config
+					.problems
+					.into_iter()
+					.map(|raw| -> Result<(u64, Arc<Problem>)> {
+						let problem_dir = data_dir.join(format!("{}", raw.id));
+						fs::create_dir_all(&problem_dir).unwrap();
+						return Ok((raw.id, Arc::new(Problem::from(&problem_dir, raw)?)));
+					})
+					.collect::<Result<HashMap<u64, Arc<Problem>>>>()?,
 				languages: raw_config
 					.languages
 					.into_iter()
-					.map(|p| (p.name.clone(), p))
+					.map(|p| (p.name.clone(), Arc::new(p)))
 					.collect(),
-			}
+			})
 		}
 	}
 }
@@ -147,10 +206,16 @@ pub mod judger {
 		serde::{Deserialize, Serialize},
 	};
 
+	#[derive(Serialize, Deserialize, Debug)]
+	pub struct Code {
+		pub language: config::Language,
+		pub source:   String,
+	}
+
 	/// Judge request data besides in/ans files
 	#[derive(Serialize, Deserialize, Debug)]
 	pub struct Request {
-		pub code:    config::Code,
+		pub code:    Code,
 		pub sandbox: bool,
 		pub cases:   Vec<config::Case>,
 		pub checker: workaround::RemoteCommand,

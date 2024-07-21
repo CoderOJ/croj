@@ -21,9 +21,8 @@ fn main() {
 			sandbox: false,
 			cases:   (0..2)
 				.map(|id| Case {
+					uid:          id as u64,
 					score:        50.0,
-					input_file:   format!("{}", id),
-					answer_file:  format!("{}", id),
 					time_limit:   1_000_000 + id * 10_000_000,
 					memory_limit: 64 * 1048576,
 				})

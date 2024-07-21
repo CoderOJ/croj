@@ -68,9 +68,9 @@ fn run_case<F: FnMut(CaseResult)>(
 ) -> Result<()> {
 	send_case(CaseResult::Running);
 
-	let input_file = &fs.input.at(&case.input_file);
+	let input_file = &fs.input.at(case.uid);
 	let output_file = &fs.output;
-	let answer_file = &fs.answer.at(&case.answer_file);
+	let answer_file = &fs.answer.at(case.uid);
 
 	let runner = format!(
 		"{}/sandbox",
@@ -150,12 +150,12 @@ fn run_case<F: FnMut(CaseResult)>(
 						_ => entry,
 					}))
 					.stdin(Stdio::null())
-					.stdout(Stdio::from(fs.checker.at("output").setter()?))
+					.stdout(Stdio::from(fs.checker_output.setter()?))
 					.stderr(Stdio::null())
 					.spawn()?;
 			match checker_process.wait_timeout(Duration::from_secs(1))? {
 				Some(code) if code.success() => {
-					let checker_output = fs.checker.at("output").get()?;
+					let checker_output = fs.checker_output.get()?;
 					let mut iter = checker_output.split("\n");
 					let result_type = iter.next();
 					let result_info = iter.next().unwrap_or("").to_string();

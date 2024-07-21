@@ -38,7 +38,7 @@ pub struct FileList {
 
 pub struct FileListIter<'a> {
 	parent: &'a FileList,
-	id:     usize,
+	id:     u64,
 }
 
 impl FileList {
@@ -47,9 +47,9 @@ impl FileList {
 			prefix: String::from(prefix),
 		}
 	}
-	pub fn at<T: std::fmt::Display>(&self, index: T) -> File {
+	pub fn at(&self, uid: u64) -> File {
 		File {
-			name: format!("{}{}", self.prefix, index),
+			name: format!("{}{}", self.prefix, uid),
 		}
 	}
 	pub fn iter(&self) -> FileListIter {
@@ -69,12 +69,13 @@ impl<'a> Iterator for FileListIter<'a> {
 }
 
 pub struct Fs {
-	pub source:  File,
-	pub target:  File,
-	pub output:  File,
-	pub input:   FileList,
-	pub answer:  FileList,
-	pub checker: FileList,
+	pub source:         File,
+	pub target:         File,
+	pub output:         File,
+	pub input:          FileList,
+	pub answer:         FileList,
+	pub checker:        FileList,
+	pub checker_output: File,
 }
 
 impl Fs {
@@ -82,12 +83,13 @@ impl Fs {
 	pub fn bind(dir: &str) -> Result<Self> {
 		std::env::set_current_dir(dir)?;
 		return Ok(Fs {
-			source:  File::bind("source"),
-			target:  File::bind("target"),
-			output:  File::bind("output"),
-			input:   FileList::bind("in"),
-			answer:  FileList::bind("ans"),
-			checker: FileList::bind("checker"),
+			source:         File::bind("source"),
+			target:         File::bind("target"),
+			output:         File::bind("output"),
+			input:          FileList::bind("in"),
+			answer:         FileList::bind("ans"),
+			checker:        FileList::bind("checker"),
+			checker_output: File::bind("checker_output"),
 		});
 	}
 }
