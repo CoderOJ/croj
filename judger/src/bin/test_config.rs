@@ -9,14 +9,14 @@ fn main() {
 		to_string(&Request {
 			code:    Code {
 				language: Language {
-					name:      "Rust".to_string(),
-					file_name: "main.rs".to_string(),
-					command:   ["rustc", "-C", "opt-level=2", "-o", "%OUTPUT%", "%INPUT%"]
+					name:      "C".to_string(),
+					file_name: "main.c".to_string(),
+					command:   ["gcc", "-o", "%OUTPUT%", "%INPUT%"]
 						.iter()
 						.map(|s| s.to_string())
 						.collect(),
 				},
-				source:   std::fs::read_to_string("tests/echo.rs").unwrap(),
+				source:   std::fs::read_to_string("tests/read_ans.c").unwrap(),
 			},
 			sandbox: false,
 			cases:   (0..2)

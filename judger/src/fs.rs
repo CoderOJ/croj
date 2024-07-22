@@ -82,16 +82,17 @@ pub struct Fs {
 impl Fs {
 	// this function may only called once
 	pub fn bind(dir: &str) -> Result<Self> {
+		// ./a is the directory with permission 700
 		std::env::set_current_dir(dir)?;
 		return Ok(Fs {
-			source:         File::bind("source"),
+			source:         File::bind("a/source"),
 			target:         File::bind("target"),
-			output:         File::bind("output"),
-			compile_output: File::bind("compile_output"),
-			input:          FileList::bind("data/in"),
-			answer:         FileList::bind("data/ans"),
-			checker:        FileList::bind("checker"),
-			checker_output: File::bind("checker_output"),
+			output:         File::bind("a/output"),
+			compile_output: File::bind("a/compile_output"),
+			input:          FileList::bind("a/data/in"),
+			answer:         FileList::bind("a/data/ans"),
+			checker:        FileList::bind("a/checker"),
+			checker_output: File::bind("a/checker_output"),
 		});
 	}
 }

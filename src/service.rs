@@ -123,7 +123,7 @@ fn runner(cpuid: u8, recv: Receiver<SubmissionRef>) {
 							// no network access
 							"--network=none",
 							// map data dir ro
-							format!("-v=./{}:/work/data:ro", &submission.problem.data_dir).as_str(),
+							format!("-v=./{}:/work/a/data:ro", &submission.problem.data_dir).as_str(),
 							// start container
 							"oj-judger",
 						])

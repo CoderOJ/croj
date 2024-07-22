@@ -14,5 +14,7 @@ ADD ./Cargo.toml /app/Cargo.toml
 WORKDIR /app/
 RUN cargo build --release
 RUN mkdir /work
+RUN mkdir /work/a
+RUN chmod 700 /work/a
 
 ENTRYPOINT ["/app/target/release/judger"]
