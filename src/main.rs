@@ -42,6 +42,9 @@ async fn main() -> std::io::Result<()> {
 				// DO NOT REMOVE: used in automatic testing
 				.service(exit)
 				.service(oj::api::jobs::post)
+				.service(oj::api::jobs::put_id)
+				.service(oj::api::jobs::delete_id)
+				.service(oj::api::jobs::get)
 				.service(oj::api::jobs::get_id)
 		}
 	})

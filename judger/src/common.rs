@@ -1,4 +1,5 @@
 pub type Timestamp = chrono::DateTime<chrono::Utc>;
+pub const TIME_FORMAT: &str = "%Y-%m-%dT%H:%M:%S%.3fZ";
 
 pub mod workaround {
 	use {
@@ -126,6 +127,7 @@ pub mod config {
 	}
 
 	pub struct Problem {
+		pub id:       u64,
 		pub name:     String,
 		pub checker:  workaround::RemoteCommand,
 		pub data_dir: String,
@@ -135,6 +137,7 @@ pub mod config {
 	impl Problem {
 		fn from(data_dir: &std::path::Path, raw: RawProblem) -> Result<Self> {
 			Ok(Self {
+				id:       raw.id,
 				name:     raw.name,
 				checker:  workaround::RemoteCommand::pack(match raw.type_ {
 					RawProblemType::Standard => {
@@ -226,19 +229,27 @@ pub mod judger {
 	}
 
 	// use french word resultat to differ from rust Result
-	#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+	#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 	pub enum Resultat {
 		Waiting,
 		Running,
 		Skipped,
 		Accepted,
+		#[serde(rename = "Compilation Error")]
 		CompilationError,
+		#[serde(rename = "Compilation Success")]
 		CompilationSuccess,
+		#[serde(rename = "Wrong Answer")]
 		WrongAnswer,
+		#[serde(rename = "Runtime Error")]
 		RuntimeError,
+		#[serde(rename = "Time Limit Exceeded")]
 		TimeLimitExceeded,
+		#[serde(rename = "Memory Limit Exceeded")]
 		MemoryLimitExceeded,
+		#[serde(rename = "System Error")]
 		SystemError,
+		#[serde(rename = "SPJ Error")]
 		SPJError,
 	}
 	impl Resultat {

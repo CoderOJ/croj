@@ -490,6 +490,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b6a852b24ab71dffc585bcb46eaf7959d175cb865a7152e35b348d1b2960422"
 
 [[package]]
+name = "cond"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3fbf18fe4da61148465a3a7d7d853a102c85b6959d2a5deae7d7a384687fe64d"
+
+[[package]]
 name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1091,6 +1097,7 @@ dependencies = [
  "assert-json-diff",
  "chrono",
  "clap",
+ "cond",
  "env_logger",
  "lazy_static",
  "log",
