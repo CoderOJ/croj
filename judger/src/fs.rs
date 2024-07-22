@@ -88,8 +88,8 @@ impl Fs {
 			target:         File::bind("target"),
 			output:         File::bind("output"),
 			compile_output: File::bind("compile_output"),
-			input:          FileList::bind("in"),
-			answer:         FileList::bind("ans"),
+			input:          FileList::bind("data/in"),
+			answer:         FileList::bind("data/ans"),
 			checker:        FileList::bind("checker"),
 			checker_output: File::bind("checker_output"),
 		});

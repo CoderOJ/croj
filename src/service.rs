@@ -104,8 +104,8 @@ fn runner(cpuid: u8, recv: Receiver<Job>) {
 						"-m=2G",
 						// no network access
 						"--network=none",
-						// map data dir
-						format!("-v=./{}:/work", &request.problem.data_dir).as_str(),
+						// map data dir ro
+						format!("-v=./{}:/work/data:ro", &request.problem.data_dir).as_str(),
 						// start container
 						"oj-judger",
 					])

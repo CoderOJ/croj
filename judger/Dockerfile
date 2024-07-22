@@ -13,5 +13,6 @@ ADD ./src /app/src
 ADD ./Cargo.toml /app/Cargo.toml
 WORKDIR /app/
 RUN cargo build --release
+RUN mkdir /work
 
 ENTRYPOINT ["/app/target/release/judger"]
