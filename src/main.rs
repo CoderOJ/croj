@@ -1,12 +1,17 @@
 use {
-	actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder},
+	actix_web::{middleware::Logger, post, web, App, HttpServer, Responder},
+	clap::Parser,
 	env_logger, log,
+	oj::config::Config,
+	serde_json::from_str,
 };
 
-#[get("/hello/{name}")]
-async fn greet(name: web::Path<String>) -> impl Responder {
-	log::info!(target: "greet_handler", "Greeting {}", name);
-	format!("Hello {name}!")
+#[derive(Parser, Debug)]
+struct Args {
+	#[arg(short, long)]
+	config:     String,
+	#[arg(short, long, default_value_t = false)]
+	flush_data: bool,
 }
 
 // DO NOT REMOVE: used in automatic testing
@@ -21,16 +26,26 @@ async fn exit() -> impl Responder {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 	env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+	let args = Args::parse();
+	let data_dir = std::path::Path::new("./data");
+	let config = web::Data::new(Config::from(
+		&data_dir,
+		from_str(&std::fs::read_to_string(args.config)?)?,
+	)?);
 
-	HttpServer::new(|| {
-		App::new()
-			.wrap(Logger::default())
-			.route("/hello", web::get().to(|| async { "Hello World!" }))
-			.service(greet)
-			// DO NOT REMOVE: used in automatic testing
-			.service(exit)
+	HttpServer::new({
+		let config = config.clone();
+		move || {
+			App::new()
+				.app_data(config.clone())
+				.wrap(Logger::default())
+				// DO NOT REMOVE: used in automatic testing
+				.service(exit)
+				.service(oj::api::jobs::post)
+				.service(oj::api::jobs::get_id)
+		}
 	})
-	.bind(("127.0.0.1", 12345))?
+	.bind((config.server.bind_address.as_str(), config.server.bind_port))?
 	.run()
 	.await
 }
