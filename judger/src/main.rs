@@ -159,73 +159,60 @@ fn run_case<F: FnMut(CaseResult)>(
 	} = child.wait_usage_timeout(timeout)?;
 	let time = time.as_micros() as u64;
 
-	send_case(CaseResult::Finished(match status.success() {
-		// MLE, TLE, RE
-		false => CaseResultInfo {
-			result: cond! {
-				memory > case.memory_limit => Resultat::MemoryLimitExceeded,
-				time > case.time_limit => Resultat::TimeLimitExceeded,
-				_ => Resultat::RuntimeError,
-			},
+	let mut send = |result, info| {
+		send_case(CaseResult::Finished(CaseResultInfo {
+			result,
 			time,
 			memory,
-			info: match status.code() {
-				None => match status.signal().unwrap() {
-					31 => "Dangerous Syscall".to_string(),
-					_ => format!("killed by signal {}", status.signal().unwrap()),
-				},
-				Some(code) => format!("exit with code {}", code),
-			},
+			info,
+		}))
+	};
+	let status_info = |status: ExitStatus| match status.code() {
+		None => match status.signal().unwrap() {
+			31 => "Dangerous Syscall".to_string(),
+			_ => format!("killed by signal {}", status.signal().unwrap()),
 		},
-		// AC, WA, SPJError
+		Some(code) => format!("exit with code {}", code),
+	};
+	let run_checker = || -> Result<ExitStatus> {
+		let mut checker_command_it = checker.into_iter();
+		let mut checker_process =
+			Command::new(checker_command_it.next().ok_or(anyhow!("empty spj"))?)
+				.args(checker_command_it.map(|entry| match entry.as_str() {
+					"%INPUT%" => input_file.raw(),
+					"%OUTPUT%" => fs.output.raw(),
+					"%ANSWER%" => answer_file.raw(),
+					_ => entry,
+				}))
+				.stdin(Stdio::null())
+				.stdout(Stdio::from(fs.checker_output.setter()?))
+				.stderr(Stdio::null())
+				.spawn()?;
+		return Ok(checker_process
+			.wait_usage_timeout(Duration::from_secs(1))?
+			.status);
+	};
+
+	cond! {
+	  memory > case.memory_limit => send(Resultat::MemoryLimitExceeded, status_info(status)),
+	  time > case.time_limit => send(Resultat::TimeLimitExceeded, status_info(status)),
+	  !status.success() => send(Resultat::RuntimeError, status_info(status)),
+	  _ => {
+	  let checker_status = run_checker()?;
+	  match checker_status.success() {
+		false => send(Resultat::SPJError, format!("checker exit with {}", status_info(checker_status))),
 		true => {
-			let mut checker_command_it = checker.into_iter();
-			let mut checker_process =
-				Command::new(checker_command_it.next().ok_or(anyhow!("empty spj"))?)
-					.args(checker_command_it.map(|entry| match entry.as_str() {
-						"%INPUT%" => input_file.raw(),
-						"%OUTPUT%" => fs.output.raw(),
-						"%ANSWER%" => answer_file.raw(),
-						_ => entry,
-					}))
-					.stdin(Stdio::null())
-					.stdout(Stdio::from(fs.checker_output.setter()?))
-					.stderr(Stdio::null())
-					.spawn()?;
-			match checker_process
-				.wait_usage_timeout(Duration::from_secs(1))?
-				.status
-				.success()
-			{
-				true => {
 					let checker_output = fs.checker_output.get()?;
 					let mut iter = checker_output.split("\n");
-					let result_type = iter.next();
-					let result_info = iter.next().unwrap_or("").to_string();
-					match result_type {
-						Some("Accepted") => CaseResultInfo {
-							result: Resultat::Accepted,
-							time,
-							memory,
-							info: result_info,
-						},
-						_ => CaseResultInfo {
-							result: Resultat::WrongAnswer,
-							time,
-							memory,
-							info: result_info,
-						},
-					}
-				}
-				false => CaseResultInfo {
-					result: Resultat::SPJError,
-					time,
-					memory,
-					info: "".to_string(),
-				},
-			}
+					match iter.next() {
+			Some("Accepted") => send(Resultat::Accepted, iter.next().unwrap_or("").to_string()),
+			_ => send(Resultat::WrongAnswer, iter.next().unwrap_or("").to_string()),
+		  };
 		}
-	}));
+	  }
+	}
+	}
+
 	return Ok(());
 }
 

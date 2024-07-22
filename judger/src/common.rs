@@ -162,7 +162,11 @@ pub mod config {
 							uid:          id as u64,
 							score:        raw.score,
 							time_limit:   raw.time_limit,
-							memory_limit: raw.memory_limit,
+							memory_limit: match raw.memory_limit {
+								// max(configurable) memory limit: 2G
+								0 => 2 * 1024 * 1024 * 1024,
+								x => x,
+							},
 						});
 					})
 					.collect::<Result<Vec<Case>>>()?,
