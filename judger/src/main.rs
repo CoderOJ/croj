@@ -87,6 +87,7 @@ fn compile<F: FnMut(Update)>(fs: &Fs, code: &Code, mut send: F) -> Result<()> {
 					_ => entry,
 				}),
 		)
+		.stderr(Stdio::from(fs.compile_output.setter()?))
 		.spawn()?;
 	let Usage {
 		status,
@@ -100,7 +101,7 @@ fn compile<F: FnMut(Update)>(fs: &Fs, code: &Code, mut send: F) -> Result<()> {
 				result: Resultat::CompilationSuccess,
 				time: time.as_millis() as u64,
 				memory,
-				info: String::new(),
+				info: fs.compile_output.get()?,
 			})));
 		}
 		false => {
@@ -108,7 +109,7 @@ fn compile<F: FnMut(Update)>(fs: &Fs, code: &Code, mut send: F) -> Result<()> {
 				result: Resultat::CompilationError,
 				time: time.as_millis() as u64,
 				memory,
-				info: String::new(),
+				info: fs.compile_output.get()?,
 			})));
 			send(Update::Finish(Resultat::CompilationError, 0.0));
 		}
@@ -231,9 +232,6 @@ fn main() {
 	// reject: replace exitCode and stderr
 	try_catch(
 		|| {
-			// work dir mapped by docker
-			let fs = Fs::bind(&std::env::var("JUDGER_WORK_DIR").unwrap_or("/work".to_string()))?;
-
 			let Request {
 				cases,
 				sandbox,
@@ -244,6 +242,13 @@ fn main() {
 				std::io::stdin().read_to_string(&mut buf)?;
 				return Ok(from_str(&buf)?);
 			}()?;
+
+			let fs = { 
+				let mut fs = Fs::bind(&std::env::var("JUDGER_WORK_DIR").unwrap_or("/work".to_string()))?;
+				// cpp compilers require filename to determine file type
+				fs.source = judger::fs::File::bind(&code.language.file_name);
+				fs
+			};
 
 			// unpack checker
 			let checker = checker.unpack(fs.checker.iter().map(|f| f.raw().clone()))?;
