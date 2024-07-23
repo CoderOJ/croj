@@ -1,5 +1,5 @@
 use {
-	crate::{callcc::*, common, config, judger, response, service},
+	crate::{callcc::*, common, config, judger, response, service, user},
 	actix_web::{
 		delete, get, post, put,
 		web::{self},
@@ -77,6 +77,14 @@ fn submission_to_response(result: service::SubmissionRef) -> serde_json::Value {
 fn post(req: web::Json<Submission>, config: web::Data<config::Config>) -> KEntrance<HttpResponse> {
 	let submission = Arc::new(req.into_inner());
 	callcc_ret(move |k: KEntrance<HttpResponse>| {
+		let _user = user::get_list_id()
+			.get(submission.user_id as usize)
+			.ok_or(HttpResponse::NotFound().json(response::Error {
+				code:    3,
+				reason:  "ERR_NOT_FOUND".to_string(),
+				message: format!("User {:?} not found", &submission.user_id),
+			}))?;
+
 		let language = config
 			.languages
 			.get(&submission.language)

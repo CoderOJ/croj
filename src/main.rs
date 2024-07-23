@@ -46,6 +46,8 @@ async fn main() -> std::io::Result<()> {
 				.service(oj::api::jobs::delete_id)
 				.service(oj::api::jobs::get)
 				.service(oj::api::jobs::get_id)
+				.service(oj::api::users::post)
+				.service(oj::api::users::get)
 		}
 	})
 	.bind((config.server.bind_address.as_str(), config.server.bind_port))?
