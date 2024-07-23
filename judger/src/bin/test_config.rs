@@ -1,5 +1,5 @@
 use {
-	judger::{config::*, judger::*, workaround::RemoteCommand},
+	judger::{judger::*, workaround::RemoteCommand},
 	serde_json::to_string,
 };
 

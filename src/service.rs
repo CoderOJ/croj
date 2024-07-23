@@ -19,7 +19,7 @@ use {
 
 pub struct Request {
 	pub source:     Arc<String>,
-	pub language:   Arc<config::Language>,
+	pub language:   Arc<judger::Language>,
 	pub problem:    Arc<config::Problem>,
 	pub submission: Arc<crate::api::jobs::Submission>,
 }
@@ -38,7 +38,7 @@ pub struct Submission {
 	// info
 	pub id:             u64,
 	pub source:         Arc<String>,
-	pub language:       Arc<config::Language>,
+	pub language:       Arc<judger::Language>,
 	pub problem:        Arc<config::Problem>,
 	pub raw:            Arc<crate::api::jobs::Submission>,
 	// result

@@ -8,7 +8,7 @@
 use {
 	anyhow::{anyhow, Error, Result},
 	cond::cond,
-	judger::{config::*, fs::Fs, judger::*, workaround},
+	judger::{fs::Fs, judger::*, workaround},
 	serde_json::{from_str, to_string},
 	std::{
 		collections::HashSet,
