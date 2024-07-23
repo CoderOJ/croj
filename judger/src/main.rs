@@ -11,6 +11,7 @@ use {
 	judger::{config::*, fs::Fs, judger::*, workaround},
 	serde_json::{from_str, to_string},
 	std::{
+		collections::HashSet,
 		io::Read,
 		os::unix::process::ExitStatusExt,
 		process::{Child, Command, ExitStatus, Stdio},
@@ -243,8 +244,9 @@ fn main() {
 				return Ok(from_str(&buf)?);
 			}()?;
 
-			let fs = { 
-				let mut fs = Fs::bind(&std::env::var("JUDGER_WORK_DIR").unwrap_or("/work".to_string()))?;
+			let fs = {
+				let mut fs =
+					Fs::bind(&std::env::var("JUDGER_WORK_DIR").unwrap_or("/work".to_string()))?;
 				// cpp compilers require filename to determine file type
 				fs.source = judger::fs::File::bind(&code.language.file_name);
 				fs
@@ -259,15 +261,27 @@ fn main() {
 
 			// run cases
 			let mut score: f64 = 0.0;
+			let mut accepted_set = HashSet::<u64>::new();
 			let mut general_result = Resultat::Accepted;
 			for (id, case) in cases.iter().enumerate() {
-				run_case(&fs, sandbox, case, &checker, |data: CaseResult| {
-					if let CaseResult::Finished(info) = &data {
-						score += info.result.score_coef() * case.score;
-						general_result = general_result.or(info.result);
-					}
-					send(Update::Case(id as u64, data));
-				})?;
+				let id = id as u64;
+				if case.dependency.iter().any(|id| !accepted_set.contains(id)) {
+					send(Update::Case(
+						id,
+						CaseResult::Finished(CaseResultInfo::skipped()),
+					));
+				} else {
+					run_case(&fs, sandbox, case, &checker, |data: CaseResult| {
+						if let CaseResult::Finished(info) = &data {
+							if info.result == Resultat::Accepted {
+								accepted_set.insert(id);
+							}
+							score += info.result.score_coef() * case.pack_score;
+							general_result = general_result.or(info.result);
+						}
+						send(Update::Case(id, data));
+					})?;
+				}
 			}
 
 			send(Update::Finish(general_result, score));

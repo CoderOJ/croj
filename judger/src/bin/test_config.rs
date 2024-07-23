@@ -25,6 +25,8 @@ fn main() {
 					score:        50.0,
 					time_limit:   1_000_000 + id * 10_000_000,
 					memory_limit: 64 * 1048576,
+					dependency:   Vec::new(),
+					pack_score:   50.0,
 				})
 				.collect(),
 			checker: RemoteCommand::pack(

@@ -60,7 +60,12 @@ pub mod config {
 	use {
 		crate::workaround,
 		serde::{Deserialize, Serialize},
-		std::{collections::HashMap, fs, io::Result, sync::Arc},
+		std::{
+			collections::HashMap,
+			fs,
+			io::{Error, Result},
+			sync::Arc,
+		},
 	};
 
 	#[derive(Serialize, Deserialize, Debug, Clone)]
@@ -98,6 +103,7 @@ pub mod config {
 	#[derive(Serialize, Deserialize, Debug)]
 	pub struct RawProblemMisc {
 		pub special_judge: Option<Vec<String>>,
+		pub packing:       Option<Vec<Vec<u64>>>,
 	}
 
 	#[derive(Serialize, Deserialize, Debug)]
@@ -124,6 +130,8 @@ pub mod config {
 		pub score:        f64,
 		pub time_limit:   u64,
 		pub memory_limit: u64,
+		pub dependency:   Vec<u64>,
+		pub pack_score:   f64,
 	}
 
 	pub struct Problem {
@@ -136,6 +144,37 @@ pub mod config {
 	}
 	impl Problem {
 		fn from(data_dir: &std::path::Path, raw: RawProblem) -> Result<Self> {
+			fn parse_packing(
+				packing: Option<Vec<Vec<u64>>>,
+				mut cases: Vec<Case>,
+			) -> Result<Vec<Case>> {
+				match packing {
+					None => {
+						for case in &mut cases {
+							case.pack_score = case.score;
+						}
+						Ok(cases)
+					}
+					Some(packing) => {
+						for mut pack in packing {
+							for uid in &mut pack {
+								*uid -= 1;
+							}
+							let &last_uid = pack.last().ok_or(Error::other("ill packing"))?;
+							let mut prev_uid: Option<u64> = None;
+							for uid in pack {
+								cases[last_uid as usize].pack_score += cases[uid as usize].score;
+								if let Some(prev_uid) = prev_uid {
+									cases[uid as usize].dependency.push(prev_uid);
+								}
+								prev_uid = Some(uid);
+							}
+						}
+						Ok(cases)
+					}
+				}
+			}
+
 			Ok(Self {
 				id:       raw.id,
 				name:     raw.name,
@@ -153,26 +192,30 @@ pub mod config {
 					RawProblemType::Checker => raw.misc.special_judge.as_ref().unwrap().clone(),
 				}),
 				data_dir: data_dir.to_str().unwrap().to_string(),
-				cases:    raw
-					.cases
-					.into_iter()
-					.enumerate()
-					.map(|(id, raw)| -> Result<Case> {
-						// this part should use crate::Fs feature instead of string concat
-						std::fs::copy(raw.input_file, data_dir.join(format!("in{}", id)))?;
-						std::fs::copy(raw.answer_file, data_dir.join(format!("ans{}", id)))?;
-						return Ok(Case {
-							uid:          id as u64,
-							score:        raw.score,
-							time_limit:   raw.time_limit,
-							memory_limit: match raw.memory_limit {
-								// max(configurable) memory limit: 2G
-								0 => 2 * 1024 * 1024 * 1024,
-								x => x,
-							},
-						});
-					})
-					.collect::<Result<Vec<Case>>>()?,
+				cases:    parse_packing(
+					raw.misc.packing,
+					raw.cases
+						.into_iter()
+						.enumerate()
+						.map(|(id, raw)| -> Result<Case> {
+							// this part should use crate::Fs feature instead of string concat
+							std::fs::copy(raw.input_file, data_dir.join(format!("in{}", id)))?;
+							std::fs::copy(raw.answer_file, data_dir.join(format!("ans{}", id)))?;
+							return Ok(Case {
+								uid:          id as u64,
+								score:        raw.score,
+								time_limit:   raw.time_limit,
+								memory_limit: match raw.memory_limit {
+									// max(configurable) memory limit: 2G
+									0 => 2 * 1024 * 1024 * 1024,
+									x => x,
+								},
+								dependency:   Vec::new(),
+								pack_score:   0.0,
+							});
+						})
+						.collect::<Result<_>>()?,
+				)?,
 				sandbox:  raw.sandbox.unwrap_or(false),
 			})
 		}
@@ -273,6 +316,16 @@ pub mod judger {
 		pub time:   u64,
 		pub memory: u64,
 		pub info:   String,
+	}
+	impl CaseResultInfo {
+		pub fn skipped() -> Self {
+			Self {
+				result: Resultat::Skipped,
+				time:   0,
+				memory: 0,
+				info:   String::new(),
+			}
+		}
 	}
 
 	#[derive(Serialize, Deserialize, Debug)]
