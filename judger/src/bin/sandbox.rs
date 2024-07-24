@@ -96,8 +96,8 @@ fn main() {
 	let args = Args::parse();
 
 	unsafe {
-		libc::setuid(2000);
 		libc::setgid(2000);
+		libc::setuid(2000);
 	}
 	set_rlimit(&args);
 	if args.sandbox.unwrap_or(false) {
