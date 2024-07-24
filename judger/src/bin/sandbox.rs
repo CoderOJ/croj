@@ -51,6 +51,9 @@ fn set_seccomp() {
 		// allow 257: opennat
 		seccomp_rule_add(ctx, SCMP_ACT_ALLOW, 257, 0);
 
+		// allow 257: readlinkat
+		seccomp_rule_add(ctx, SCMP_ACT_ALLOW, 267, 0);
+
 		// allow 273
 		seccomp_rule_add(ctx, SCMP_ACT_ALLOW, 273, 0);
 
