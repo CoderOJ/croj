@@ -136,7 +136,7 @@ fn run_case<F: FnMut(CaseResult)>(
 		"{}/sandbox",
 		std::env::var("JUDGER_BIN_DIR").unwrap_or("/app/target/release".to_string())
 	);
-
+	
 	let mut child = Command::new(runner)
 		.args(vec![
 			"-r",
@@ -152,7 +152,7 @@ fn run_case<F: FnMut(CaseResult)>(
 		.stdout(Stdio::from(output_file.setter()?))
 		.stderr(Stdio::null())
 		.spawn()?;
-
+		
 	let timeout = Duration::from_micros(case.time_limit + 1_000_000);
 	let Usage {
 		status,

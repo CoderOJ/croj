@@ -71,8 +71,15 @@ fn set_seccomp() {
 		seccomp_rule_add(ctx, SCMP_ACT_ALLOW, 318, 0);
 
 		// for rust program
+		// rt_sig*: e.g. SIGSEGV
 		seccomp_rule_add(ctx, SCMP_ACT_ALLOW, 13, 0);
+		seccomp_rule_add(ctx, SCMP_ACT_ALLOW, 14, 0);
+		seccomp_rule_add(ctx, SCMP_ACT_ALLOW, 15, 0);
 		seccomp_rule_add(ctx, SCMP_ACT_ALLOW, 204, 0);
+
+		// for cpp program
+		// std::cout use sys_futex
+		seccomp_rule_add(ctx, SCMP_ACT_ALLOW, 202, 0);
 
 		seccomp_load(ctx);
 	}

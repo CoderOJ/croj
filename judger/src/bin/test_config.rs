@@ -9,16 +9,16 @@ fn main() {
 		to_string(&Request {
 			code:    Code {
 				language: Language {
-					name:      "C".to_string(),
-					file_name: "main.c".to_string(),
-					command:   ["gcc", "-o", "%OUTPUT%", "%INPUT%"]
+					name:      "Rust".to_string(),
+					file_name: "main.rs".to_string(),
+					command:   ["rustc", "-o", "%OUTPUT%", "%INPUT%"]
 						.iter()
 						.map(|s| s.to_string())
 						.collect(),
 				},
-				source:   std::fs::read_to_string("tests/read_ans.c").unwrap(),
+				source:   std::fs::read_to_string("tests/hello.rs").unwrap(),
 			},
-			sandbox: false,
+			sandbox: true,
 			cases:   (0..2)
 				.map(|id| Case {
 					uid:          id as u64,
