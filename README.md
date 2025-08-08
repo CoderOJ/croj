@@ -1,6 +1,6 @@
-# croj
+# CROJ
 
-croj is a distributed Online Judge (OJ) system written in Rust, designed for secure, scalable, and efficient code evaluation.
+CROJ is a distributed Online Judge (OJ) system written in Rust, designed for secure, scalable, and efficient code evaluation.
 
 ## Features
 
